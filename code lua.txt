@@ -1,0 +1,209 @@
+SS = false
+fin = {}
+Energy =0
+Time = 0
+function sysCall_init()
+    corout=coroutine.create(coroutineMain)
+   
+    
+end
+
+function sysCall_actuation()
+    if coroutine.status(corout)~='dead' then
+        local ok,errorMsg=coroutine.resume(corout)
+        if errorMsg then
+            error(debug.traceback(corout,errorMsg),2)
+        end
+    end
+end
+
+E = 0
+
+function movCallback(config,vel,accel,handles)
+    --E = 0
+    x = 0
+    for i=1,#handles,1 do
+        if sim.getJointMode(handles[i])==sim.jointmode_force and sim.isDynamicallyEnabled(handles[i]) then
+            sim.setJointTargetPosition(handles[i],config[i])
+            -- Couple
+            
+            a = math.abs(sim.getJointForce(handles[i]))
+            --print ("a[",i," ] = ", a)
+            E = E + a
+            
+            --print("a = ",a)
+        else    
+            sim.setJointPosition(handles[i],config[i])
+            -- Couple
+
+        end
+    end
+    --print("Energie = ",E )  
+    --print("Z = ",Z ) 
+end
+
+
+function myFunction (inInts,inFloats,inStrings,inBuffer)
+    P=inFloats
+    print("P = ",#P)
+    --print("Printing in myFunction", P)
+    -- Loop
+    
+    inInts = 0
+    D = {}
+    M = {}
+    X = {}
+    q = 0
+    b = 1
+    Vell = {}
+    Accel = {}
+    for i=1,#P,1 do
+        q=q+1
+         
+        D[q]=P[i]
+        
+        if #D == 7 then
+            X = D
+            M[b] = X
+            --print ('M [',b,'] =',M[b])
+            b = b + 1
+            q = 0
+            D = {}
+
+            
+        end
+        if #M == 8 then
+             Vell = M[8] 
+        end
+        if #M == 9 then
+             Accel = M[9] 
+             
+        end
+    end
+    
+    print("length M = "..#M)
+    
+    print("Vell =  ",Vell)
+    
+    SS = true
+    
+    
+    return inInts,inFloats,inStrings,inBuffer
+end
+
+
+
+
+function moveToConfig(handles,maxVel,maxAccel,maxJerk,targetConf)
+    local currentConf={}
+    for i=1,#handles,1 do
+        currentConf[i]=sim.getJointPosition(handles[i])
+    end
+    sim.moveToConfig(-1,currentConf,nil,nil,maxVel,maxAccel,maxJerk,targetConf,nil,movCallback,handles)
+end
+
+T = {}
+function coroutineMain()
+    z = 0
+    local jointHandles={}
+    
+    for i=1,7,1 do
+        jointHandles[i]=sim.getObject('./joint',{index=i-1})
+    end
+    
+    local vel=110   
+    local accel=80  
+    local jerk=80   
+    
+    local maxVel={vel*math.pi/180,vel*math.pi/180,vel*math.pi/180,vel*math.pi/180,vel*math.pi/180,vel*math.pi/180,vel*math.pi/180}
+    local maxAccel={accel*math.pi/180,accel*math.pi/180,accel*math.pi/180,accel*math.pi/180,accel*math.pi/180,accel*math.pi/180,accel*math.pi/180}
+    local maxJerk={jerk*math.pi/180,jerk*math.pi/180,jerk*math.pi/180,jerk*math.pi/180,jerk*math.pi/180,jerk*math.pi/180,jerk*math.pi/180}
+    
+    local p1={-7.27*math.pi/180,36.23*math.pi/180,100.26*math.pi/180 ,-55.72*math.pi/180,120.66*math.pi/180,88.05*math.pi/180,-4.55*math.pi/180   }
+    local p2={0*math.pi/180,0*math.pi/180,0*math.pi/180,0*math.pi/180,0*math.pi/180,0*math.pi/180,0*math.pi/180}
+    local p3={90*math.pi/180,90*math.pi/180,170*math.pi/180,-90*math.pi/180,90*math.pi/180,90*math.pi/180,0}
+    
+    p={p1,p2,p3}
+    e = 0
+    
+    while true do
+    
+        if SS==true then
+            e1 = E
+            --print('e1 = '..e1)
+            for j = 1,2,1 do
+                
+                moveToConfig(jointHandles,maxVel,maxAccel,maxJerk,p[j])
+                --print(j,p[j])
+                T[j]= E 
+                --print ("T",i,T[j])
+                if j== 2 then
+                    V = E
+                end
+            end
+            print("maxvel avant :",maxVel[1])
+            print("maxAccel avant :",maxAccel[1])
+            L = E-e1
+            --print ('E before = '..L)
+            V = E  
+            
+            --print("Tfinal = ",T)
+            
+            
+            --print("V = "..V)
+            --print("E before starting boucle = ", E)
+            
+            Tstart = sim.getSimulationTime()
+            
+            for j = 1,7,1 do
+                vel=110* Vell[j]
+                maxVel={vel,vel,vel,vel,vel,vel,vel}
+                accel=80* Accel[j]
+                maxAccel={accel,accel,accel,accel,accel,accel,accel}
+                
+                print('VELOCITY ['..j..']= '..vel)
+                print('Acceleration ['..j..'] = '..accel)
+                moveToConfig(jointHandles,maxVel,maxAccel,maxJerk,M[j])
+                print("M["..j.."] =",j,M[j])
+            end 
+ 
+            Tfinish=sim.getSimulationTime()
+            Time = Tfinish - Tstart
+            Energy = E - V
+            print(" Simulation time = "  , Time)
+            print(' Energy consumed = ' , Energy)
+            SS=false
+            TT = Time
+            FF = Energy
+            print("Energy = "..FF)
+            print("Time = "..TT)
+            z = 1
+        end
+    end
+end
+
+function VREP_PYTHON(inInts1,inFloats1,inStrings1,inBuffer1)
+    
+        if z ~= 1 then 
+            
+            inInts1 = {0}
+            
+        end
+        
+        if z == 1 then 
+            fin = {TT,FF}
+            inFloats1 = fin
+            inInts1 = {1}
+            
+        end
+        
+        
+            
+        
+   
+    --inFloats1 = fin
+    --inInts1 = FF
+    --print('inFloats1 = ', inFloats1)
+    --print(inStrings1)
+    return inInts1,inFloats1,inStrings1,inBuffer1
+end
